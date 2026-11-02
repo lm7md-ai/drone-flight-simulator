@@ -1,0 +1,2138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>3D Open World Drone Flight Simulator - AAA Edition</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+    body {
+      background: #080d14;
+      overflow: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #00ff88;
+    }
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+    }
+    #osd-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    /* OSD Typography */
+    .osd-mono {
+      font-family: 'Courier New', Courier, monospace;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+    .osd-text {
+      font-size: 13px;
+      color: #00ff88;
+      text-shadow: 0 0 6px rgba(0, 255, 136, 0.85), 1px 1px 2px #000;
+    }
+    .osd-warning {
+      color: #ff3344 !important;
+      text-shadow: 0 0 8px rgba(255, 51, 68, 0.95), 1px 1px 2px #000 !important;
+      animation: blink 0.4s infinite alternate;
+    }
+    @keyframes blink { from { opacity: 1; } to { opacity: 0.25; } }
+
+    /* Top Compass Ribbon */
+    #compass-container {
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 340px;
+      height: 38px;
+      overflow: hidden;
+      border-bottom: 2px solid rgba(0, 255, 136, 0.6);
+      background: linear-gradient(180deg, rgba(10,30,20,0.5), rgba(0,255,136,0.15));
+      border-radius: 4px;
+    }
+    #compass-tape {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1440px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      transition: transform 0.05s linear;
+    }
+    #compass-pip {
+      position: absolute;
+      top: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 9px solid #00ff88;
+      filter: drop-shadow(0 0 4px #00ff88);
+    }
+    #heading-value {
+      position: absolute;
+      top: 45px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 13px;
+    }
+
+    /* Artificial Horizon Reticle & Ladder */
+    #horizon-reticle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 140px;
+      height: 140px;
+      pointer-events: none;
+    }
+    #horizon-ladder {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 220px;
+      height: 420px;
+      margin-top: -210px;
+      margin-left: -110px;
+      transform-origin: center center;
+    }
+
+    /* Left & Right HUD Panels */
+    #left-telemetry {
+      position: absolute;
+      left: 25px;
+      top: 48%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: rgba(6, 16, 12, 0.7);
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 255, 136, 0.35);
+      backdrop-filter: blur(5px);
+    }
+    #right-telemetry {
+      position: absolute;
+      right: 25px;
+      top: 48%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      text-align: right;
+      background: rgba(6, 16, 12, 0.7);
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 255, 136, 0.35);
+      backdrop-filter: blur(5px);
+    }
+
+    /* Minimap Radar */
+    #radar-container {
+      position: absolute;
+      bottom: 25px;
+      right: 25px;
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 255, 136, 0.75);
+      background: rgba(4, 18, 10, 0.88);
+      overflow: hidden;
+      box-shadow: 0 0 16px rgba(0, 255, 136, 0.35);
+      backdrop-filter: blur(6px);
+      pointer-events: auto;
+    }
+    #radar-canvas {
+      width: 100%;
+      height: 100%;
+    }
+    #radar-sweep {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      border-radius: 50%;
+      background: conic-gradient(from 0deg, rgba(0,255,136,0.3) 0deg, transparent 60deg, transparent 360deg);
+      animation: radarRotate 3s linear infinite;
+      pointer-events: none;
+    }
+    @keyframes radarRotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* Mission & Race Banner */
+    #mission-banner {
+      position: absolute;
+      top: 75px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      background: rgba(6, 18, 12, 0.9);
+      padding: 8px 24px;
+      border-radius: 20px;
+      border: 1px solid rgba(0, 255, 136, 0.65);
+      box-shadow: 0 0 18px rgba(0, 255, 136, 0.4);
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    /* Bottom Bar */
+    #bottom-bar {
+      position: absolute;
+      bottom: 20px;
+      left: 25px;
+      right: 195px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(6, 16, 12, 0.7);
+      padding: 10px 18px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 255, 136, 0.35);
+      backdrop-filter: blur(5px);
+    }
+
+    /* Controls Panel */
+    #controls-card {
+      position: absolute;
+      top: 20px;
+      left: 25px;
+      background: rgba(6, 18, 12, 0.9);
+      border: 1px solid rgba(0, 255, 136, 0.5);
+      padding: 14px 18px;
+      border-radius: 10px;
+      font-size: 12px;
+      line-height: 1.65;
+      pointer-events: auto;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.65);
+      max-width: 270px;
+    }
+    .ctrl-key {
+      background: rgba(0, 255, 136, 0.22);
+      border: 1px solid #00ff88;
+      border-radius: 4px;
+      padding: 1px 5px;
+      color: #fff;
+      font-weight: bold;
+    }
+    .ui-btn {
+      background: rgba(0, 255, 136, 0.16);
+      border: 1px solid #00ff88;
+      color: #00ff88;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: bold;
+      padding: 6px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      pointer-events: auto;
+      margin-top: 5px;
+      transition: all 0.2s;
+    }
+    .ui-btn:hover {
+      background: #00ff88;
+      color: #030806;
+      box-shadow: 0 0 10px #00ff88;
+    }
+
+    /* Screen Crash Glitch Effect */
+    #crash-glitch {
+      position: absolute;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(255, 20, 20, 0.42);
+      mix-blend-mode: color-dodge;
+      display: none;
+      pointer-events: none;
+      z-index: 50;
+    }
+
+    /* Model Status Banner */
+    #model-status {
+      position: absolute;
+      bottom: 75px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(4, 25, 15, 0.9);
+      border: 1px solid #00ff88;
+      color: #00ff88;
+      font-size: 12px;
+      padding: 5px 18px;
+      border-radius: 14px;
+      z-index: 15;
+      pointer-events: none;
+      box-shadow: 0 0 12px rgba(0,255,136,0.35);
+    }
+
+    /* Audio Splash Screen */
+    #audio-splash {
+      position: absolute;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: radial-gradient(circle at center, rgba(10, 28, 18, 0.95), rgba(2, 8, 4, 0.98));
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      text-align: center;
+      padding: 20px;
+    }
+    #audio-splash h1 {
+      font-size: 36px;
+      margin-bottom: 8px;
+      color: #00ff88;
+      text-shadow: 0 0 22px rgba(0, 255, 136, 0.85);
+      letter-spacing: 2px;
+    }
+    #audio-splash h3 {
+      font-size: 16px;
+      color: #a0ffd0;
+      margin-bottom: 24px;
+      font-weight: 400;
+    }
+    .feature-list {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 820px;
+    }
+    .feature-item {
+      background: rgba(0, 255, 136, 0.09);
+      border: 1px solid rgba(0, 255, 136, 0.35);
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #e0ffee;
+    }
+    .start-btn {
+      background: linear-gradient(135deg, #00ff88, #00b359);
+      color: #021207;
+      font-size: 18px;
+      font-weight: 800;
+      padding: 14px 36px;
+      border-radius: 30px;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 0 30px rgba(0, 255, 136, 0.8), inset 0 0 10px #ffffff;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .start-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 45px rgba(0, 255, 136, 1.0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Audio Splash Screen -->
+  <div id="audio-splash">
+    <h1>3D OPEN WORLD DRONE SIMULATOR</h1>
+    <h3>AAA WebGL Engine • GLTF/GLB Drone Dynamics • AABB Physics • Gamepad API</h3>
+    
+    <div class="feature-list">
+      <div class="feature-item">Real 3D GLB Drone Mesh with Automatic Pivot Centering and Active Rotor Dynamics</div>
+      <div class="feature-item">True Physical AABB Collisions on all City Skyscrapers, Bridges, and Airport Towers</div>
+      <div class="feature-item">Full Gamepad Controller API Support with Dual Analog Sticks + Keyboard Fallback</div>
+      <div class="feature-item">Procedural Textures: Buildings, Grainy Asphalt with Skid Marks, Terrain & Water Waves</div>
+      <div class="feature-item">VFX Systems: Ground Prop-Wash Dust, Wind Speed Lines & Collision Crash Debris</div>
+    </div>
+
+    <button class="start-btn" id="start-btn">CLICK TO FLY & ACTIVATE SIMULATOR</button>
+  </div>
+
+  <!-- Screen Crash Glitch Effect -->
+  <div id="crash-glitch"></div>
+
+  <!-- Model Loading Status Banner -->
+  <div id="model-status" class="osd-mono">Initializing 3D Simulation...</div>
+
+  <!-- 3D Canvas -->
+  <div id="canvas-container"></div>
+
+  <!-- BetaFlight OSD Overlay -->
+  <div id="osd-overlay">
+    <!-- Top Compass Ribbon -->
+    <div id="compass-container">
+      <div id="compass-tape"></div>
+      <div id="compass-pip"></div>
+    </div>
+    <div id="heading-value" class="osd-text osd-mono">000°</div>
+
+    <!-- Artificial Horizon Reticle & Ladder -->
+    <svg id="horizon-reticle" viewBox="0 0 140 140">
+      <circle cx="70" cy="70" r="4" fill="none" stroke="#00ff88" stroke-width="2"/>
+      <line x1="30" y1="70" x2="55" y2="70" stroke="#00ff88" stroke-width="2"/>
+      <line x1="85" y1="70" x2="110" y2="70" stroke="#00ff88" stroke-width="2"/>
+      <line x1="70" y1="45" x2="70" y2="58" stroke="#00ff88" stroke-width="2"/>
+      <circle cx="70" cy="70" r="35" fill="none" stroke="rgba(0,255,136,0.3)" stroke-dasharray="3,6"/>
+    </svg>
+    <svg id="horizon-ladder" viewBox="0 0 220 420"></svg>
+
+    <!-- Mission & Race Banner -->
+    <div id="mission-banner">
+      <div id="gate-info" class="osd-text osd-mono" style="font-size: 13px;">GATE: 0 / 12</div>
+      <div id="lap-time" class="osd-text osd-mono" style="color: #ffff44; font-size: 13px;">TIME: 0.00s</div>
+      <div id="orbs-info" class="osd-text osd-mono" style="color: #33ddff; font-size: 13px;">ORBS: 0 / 20</div>
+    </div>
+
+    <!-- Left Telemetry Panel -->
+    <div id="left-telemetry">
+      <div class="osd-text osd-mono" id="speed-disp">SPD: 0.0 km/h</div>
+      <div class="osd-text osd-mono" id="throttle-disp">THR: 0%</div>
+      <div style="width: 100px; height: 7px; background: rgba(0,255,136,0.2); border: 1px solid #00ff88; border-radius: 2px;">
+        <div id="throttle-bar" style="width: 0%; height: 100%; background: #00ff88; transition: width 0.05s;"></div>
+      </div>
+      <div class="osd-text osd-mono" id="cam-view-disp" style="font-size: 11px;">CAM: FPV (30°)</div>
+      <div class="osd-text osd-mono" id="wind-disp" style="font-size: 11px;">WIND: 3.5 m/s ↗</div>
+    </div>
+
+    <!-- Right Telemetry Panel -->
+    <div id="right-telemetry">
+      <div class="osd-text osd-mono" id="alt-agl-disp">AGL: 0.0 m</div>
+      <div class="osd-text osd-mono" id="alt-msl-disp" style="font-size: 11px; color: #a0d8c0;">MSL: 0.0 m</div>
+      <div class="osd-text osd-mono" id="control-source-disp" style="font-size: 11px; color: #44ddff;">INPUT: KEYBOARD</div>
+      <div class="osd-text osd-mono" id="ground-effect-disp" style="font-size: 11px; color: #00ffff;">GROUND EFFECT</div>
+      <div class="osd-text osd-mono" id="boost-status" style="font-size: 11px; color: #ffcc00; display: none;">NITRO BOOST!</div>
+    </div>
+
+    <!-- Minimap Radar -->
+    <div id="radar-container">
+      <canvas id="radar-canvas" width="150" height="150"></canvas>
+      <div id="radar-sweep"></div>
+    </div>
+
+    <!-- Bottom Status Bar -->
+    <div id="bottom-bar">
+      <div class="osd-text osd-mono" id="battery-disp">BAT: 16.80V | 0.4A | 0 mAh</div>
+      <div class="osd-text osd-mono" id="flight-mode-disp" style="color: #44ddff; font-size: 13px;">MODE: ANGLE [M]</div>
+      <div class="osd-text osd-mono" id="best-lap-disp" style="color: #ffaa00;">BEST: --.--s</div>
+    </div>
+
+    <!-- Controls Panel -->
+    <div id="controls-card">
+      <b style="color: #fff; font-size: 13px;">CONTROLS & HARDWARE</b><br>
+      <span class="ctrl-key">W</span> / <span class="ctrl-key">S</span> : Throttle (Left Stick Y)<br>
+      <span class="ctrl-key">A</span> / <span class="ctrl-key">D</span> : Yaw (Left Stick X)<br>
+      <span class="ctrl-key">I</span> / <span class="ctrl-key">K</span> : Pitch (Right Stick Y)<br>
+      <span class="ctrl-key">J</span> / <span class="ctrl-key">L</span> : Roll (Right Stick X)<br>
+      <span class="ctrl-key">C</span> : Toggle Camera (FPV / Chase)<br>
+      <span class="ctrl-key">M</span> : Flight Mode (Angle / Acro)<br>
+      <span class="ctrl-key">[</span> / <span class="ctrl-key">]</span> : FPV Camera Tilt Angle<br>
+      <span class="ctrl-key">R</span> : Reset Drone to Runway<br>
+      <div style="display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap;">
+        <button class="ui-btn" id="btn-toggle-cam">Camera [C]</button>
+        <button class="ui-btn" id="btn-toggle-mode">Mode [M]</button>
+        <input type="file" id="drone-file-input" accept=".glb,.gltf" style="display:none;">
+        <button class="ui-btn" id="btn-import-drone">Import Local GLB</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Three.js r128 Library -->
+  <script src="three.min.js"></script>
+  <script>
+    if (typeof THREE === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"><\/script>');
+    }
+  </script>
+
+  <!-- DRACOLoader via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
+  <script>
+    if (typeof THREE.DRACOLoader === 'undefined') {
+      document.write('<script src="DRACOLoader.js"><\/script>');
+    }
+  </script>
+
+  <!-- GLTFLoader via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script>
+    if (typeof THREE.GLTFLoader === 'undefined') {
+      document.write('<script src="GLTFLoader.js"><\/script>');
+    }
+  </script>
+
+  <script>
+    /* =========================================================================
+       1. SYNTHESIZED PROCEDURAL WEB AUDIO ENGINE WITH TURBULENCE BIQUAD
+       ========================================================================= */
+    class DroneAudioSynthesizer {
+      constructor() {
+        this.ctx = null;
+        this.isReady = false;
+        this.motorOscs = [];
+        this.motorGain = null;
+        this.pwmWhistle = null;
+        this.windGain = null;
+        this.windFilter = null;
+        this.turbulenceFilter = null;
+        this.turbulenceGain = null;
+      }
+
+      init() {
+        if (this.isReady) return;
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioContext();
+
+        this.motorGain = this.ctx.createGain();
+        this.motorGain.gain.setValueAtTime(0.01, this.ctx.currentTime);
+
+        const freqs = [118, 120, 122, 124];
+        freqs.forEach((freq) => {
+          const osc = this.ctx.createOscillator();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(900, this.ctx.currentTime);
+
+          osc.connect(filter);
+          filter.connect(this.motorGain);
+          osc.start();
+          this.motorOscs.push({ osc, filter, baseFreq: freq });
+        });
+
+        this.pwmWhistle = this.ctx.createOscillator();
+        this.pwmWhistle.type = 'sine';
+        this.pwmWhistle.frequency.setValueAtTime(3950, this.ctx.currentTime);
+        const pwmGain = this.ctx.createGain();
+        pwmGain.gain.setValueAtTime(0.025, this.ctx.currentTime);
+        this.pwmWhistle.connect(pwmGain);
+        pwmGain.connect(this.motorGain);
+        this.pwmWhistle.start();
+
+        const distortion = this.ctx.createWaveShaper();
+        distortion.curve = this.makeDistortionCurve(18);
+        this.motorGain.connect(distortion);
+        distortion.connect(this.ctx.destination);
+
+        const bufferSize = this.ctx.sampleRate * 2;
+        const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
+
+        const whiteNoise = this.ctx.createBufferSource();
+        whiteNoise.buffer = noiseBuffer;
+        whiteNoise.loop = true;
+
+        this.windFilter = this.ctx.createBiquadFilter();
+        this.windFilter.type = 'bandpass';
+        this.windFilter.frequency.setValueAtTime(320, this.ctx.currentTime);
+        this.windFilter.Q.setValueAtTime(1.0, this.ctx.currentTime);
+
+        this.windGain = this.ctx.createGain();
+        this.windGain.gain.setValueAtTime(0.0, this.ctx.currentTime);
+
+        this.turbulenceFilter = this.ctx.createBiquadFilter();
+        this.turbulenceFilter.type = 'peaking';
+        this.turbulenceFilter.frequency.setValueAtTime(1200, this.ctx.currentTime);
+        this.turbulenceFilter.Q.setValueAtTime(4.0, this.ctx.currentTime);
+        this.turbulenceFilter.gain.setValueAtTime(0.0, this.ctx.currentTime);
+
+        this.turbulenceGain = this.ctx.createGain();
+        this.turbulenceGain.gain.setValueAtTime(0.0, this.ctx.currentTime);
+
+        whiteNoise.connect(this.windFilter);
+        this.windFilter.connect(this.windGain);
+        this.windGain.connect(this.ctx.destination);
+
+        whiteNoise.connect(this.turbulenceFilter);
+        this.turbulenceFilter.connect(this.turbulenceGain);
+        this.turbulenceGain.connect(this.ctx.destination);
+
+        whiteNoise.start();
+        this.isReady = true;
+      }
+
+      makeDistortionCurve(amount) {
+        const k = amount;
+        const n_samples = 44100;
+        const curve = new Float32Array(n_samples);
+        const deg = Math.PI / 180;
+        for (let i = 0; i < n_samples; ++i) {
+          const x = (i * 2) / n_samples - 1;
+          curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+        }
+        return curve;
+      }
+
+      update(throttle, speedKmh, angVelMag, gForce) {
+        if (!this.isReady || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const thr = Math.max(0, Math.min(1, throttle));
+
+        this.motorOscs.forEach(({ osc, filter, baseFreq }) => {
+          const freq = baseFreq + thr * 1100;
+          osc.frequency.setTargetAtTime(freq, now, 0.03);
+          filter.frequency.setTargetAtTime(800 + thr * 2600, now, 0.03);
+        });
+
+        const vol = 0.08 + thr * 0.4;
+        this.motorGain.gain.setTargetAtTime(vol, now, 0.03);
+
+        const speedRatio = Math.min(1.0, speedKmh / 150);
+        this.windGain.gain.setTargetAtTime(speedRatio * 0.3, now, 0.04);
+        this.windFilter.frequency.setTargetAtTime(280 + speedRatio * 900, now, 0.04);
+
+        const turbIntensity = Math.min(1.0, (angVelMag / 8.0) + (Math.max(0, gForce - 1.0) / 4.0));
+        this.turbulenceFilter.frequency.setTargetAtTime(1100 + turbIntensity * 1600, now, 0.03);
+        this.turbulenceFilter.gain.setTargetAtTime(turbIntensity * 15.0, now, 0.03);
+        this.turbulenceGain.gain.setTargetAtTime(turbIntensity * 0.28, now, 0.03);
+      }
+
+      playGateChime() {
+        if (!this.isReady || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(920, now);
+        osc.frequency.exponentialRampToValueAtTime(1840, now + 0.18);
+        gain.gain.setValueAtTime(0.35, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      }
+
+      playOrbCollectSound() {
+        if (!this.isReady || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1200, now);
+        osc.frequency.setValueAtTime(1600, now + 0.08);
+        osc.frequency.setValueAtTime(2400, now + 0.16);
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.45);
+      }
+
+      playBoostSound() {
+        if (!this.isReady || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.exponentialRampToValueAtTime(1400, now + 0.35);
+        gain.gain.setValueAtTime(0.5, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.6);
+      }
+
+      playCrashSound() {
+        if (!this.isReady || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(80, now);
+        osc.frequency.exponentialRampToValueAtTime(30, now + 0.25);
+        gain.gain.setValueAtTime(0.65, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.3);
+      }
+    }
+
+    const audioSynth = new DroneAudioSynthesizer();
+
+    /* =========================================================================
+       2. PROCEDURAL TEXTURES (HTML5 CANVAS 2D RUNTIME GENERATION)
+       ========================================================================= */
+    function createBuildingTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = '#1c2430';
+      ctx.fillRect(0, 0, 512, 512);
+
+      const rows = 16;
+      const cols = 8;
+      const w = 512 / cols;
+      const h = 512 / rows;
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const rand = Math.random();
+          if (rand > 0.45) {
+            ctx.fillStyle = rand > 0.85 ? '#ffe89c' : (rand > 0.65 ? '#80d8ff' : '#456078');
+          } else {
+            ctx.fillStyle = '#0d131a';
+          }
+          ctx.fillRect(c * w + 6, r * h + 5, w - 12, h - 10);
+
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+          ctx.fillRect(c * w + 6, r * h + 5, (w - 12) * 0.4, 2);
+        }
+      }
+
+      ctx.strokeStyle = '#2d3b4d';
+      ctx.lineWidth = 4;
+      for (let c = 0; c <= cols; c++) {
+        ctx.beginPath();
+        ctx.moveTo(c * w, 0);
+        ctx.lineTo(c * w, 512);
+        ctx.stroke();
+      }
+      for (let r = 0; r <= rows; r++) {
+        ctx.beginPath();
+        ctx.moveTo(0, r * h);
+        ctx.lineTo(512, r * h);
+        ctx.stroke();
+      }
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      return tex;
+    }
+
+    function createAsphaltTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = '#22252a';
+      ctx.fillRect(0, 0, 512, 512);
+
+      // Grain Specks
+      for (let i = 0; i < 25000; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const g = Math.floor(Math.random() * 40 + 20);
+        ctx.fillStyle = `rgb(${g},${g},${g})`;
+        ctx.fillRect(x, y, 1.5, 1.5);
+      }
+
+      // Tire Skid Marks
+      ctx.strokeStyle = 'rgba(10, 10, 12, 0.7)';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(140, 0);
+      ctx.bezierCurveTo(145, 150, 155, 350, 150, 512);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(370, 0);
+      ctx.bezierCurveTo(365, 150, 355, 350, 360, 512);
+      ctx.stroke();
+
+      // Yellow Hazard Stripes on Border
+      const stripeW = 24;
+      for (let y = -stripeW; y < 512 + stripeW; y += stripeW * 2) {
+        ctx.fillStyle = '#f5b000';
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(24, y + stripeW);
+        ctx.lineTo(24, y + stripeW * 1.5);
+        ctx.lineTo(0, y + stripeW * 0.5);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(488, y);
+        ctx.lineTo(512, y + stripeW);
+        ctx.lineTo(512, y + stripeW * 1.5);
+        ctx.lineTo(488, y + stripeW * 0.5);
+        ctx.fill();
+      }
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      return tex;
+    }
+
+    function createTerrainTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = '#2f5228';
+      ctx.fillRect(0, 0, 512, 512);
+
+      for (let i = 0; i < 35000; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const r = Math.random();
+        if (r > 0.6) {
+          ctx.fillStyle = 'rgba(105, 85, 55, 0.5)';
+        } else if (r > 0.3) {
+          ctx.fillStyle = 'rgba(75, 135, 45, 0.6)';
+        } else {
+          ctx.fillStyle = 'rgba(95, 95, 100, 0.4)';
+        }
+        ctx.fillRect(x, y, 2.5, 2.5);
+      }
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(24, 24);
+      return tex;
+    }
+
+    /* =========================================================================
+       3. THREE.JS 3D SCENE & GOLDEN HOUR LIGHTING
+       ========================================================================= */
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+
+    const sunsetSky = new THREE.Color(0xd59b74);
+    scene.background = sunsetSky;
+    scene.fog = new THREE.FogExp2(0xd59b74, 0.0017);
+
+    const camera = new THREE.PerspectiveCamera(85, window.innerWidth / window.innerHeight, 0.1, 2000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    container.appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0x4a6582, 0.65);
+    scene.add(ambientLight);
+
+    const sunLight = new THREE.DirectionalLight(0xffdfaa, 1.6);
+    sunLight.position.set(280, 240, 200);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 20;
+    sunLight.shadow.camera.far = 1200;
+    sunLight.shadow.camera.left = -320;
+    sunLight.shadow.camera.right = 320;
+    sunLight.shadow.camera.top = 320;
+    sunLight.shadow.camera.bottom = -320;
+    scene.add(sunLight);
+
+    const skyGeo = new THREE.SphereGeometry(1400, 32, 16);
+    const skyMat = new THREE.MeshBasicMaterial({ color: 0xd59b74, side: THREE.BackSide });
+    const skyMesh = new THREE.Mesh(skyGeo, skyMat);
+    scene.add(skyMesh);
+
+    /* =========================================================================
+       4. PROCEDURAL MULTI-BIOME OPEN WORLD TERRAIN & ANIMATED WATER
+       ========================================================================= */
+    function getTerrainHeight(x, z) {
+      const distCenter = Math.hypot(x, z);
+      if (distCenter < 50) return 0;
+
+      const lakeDist = Math.hypot(x - 180, z);
+      if (lakeDist < 75) {
+        const depth = Math.cos((lakeDist / 75) * (Math.PI / 2)) * 12;
+        return -depth;
+      }
+
+      const n1 = Math.sin(x * 0.007 + 1.2) * Math.cos(z * 0.007 + 2.4);
+      const n2 = Math.sin(x * 0.018 - z * 0.015) * 0.4;
+      const n3 = Math.cos(x * 0.035 + z * 0.03) * 0.15;
+      let h = (n1 + n2 + n3 + 1.2) * 26;
+
+      const canyonCurve = Math.sin(z * 0.01) * 60;
+      const distFromCanyon = Math.abs(x - canyonCurve);
+      if (distFromCanyon < 45 && z > 60) {
+        const canyonFactor = Math.cos((distFromCanyon / 45) * (Math.PI / 2));
+        h -= canyonFactor * 28;
+      }
+
+      if (distCenter < 75) {
+        const blend = (distCenter - 50) / 25;
+        h *= blend;
+      }
+      return Math.max(-12, h);
+    }
+
+    const terrainSize = 750;
+    const terrainRes = 140;
+    const terrainGeo = new THREE.PlaneGeometry(terrainSize, terrainSize, terrainRes, terrainRes);
+    terrainGeo.rotateX(-Math.PI / 2);
+
+    const posAttr = terrainGeo.attributes.position;
+    const colorAttr = new Float32Array(posAttr.count * 3);
+
+    for (let i = 0; i < posAttr.count; i++) {
+      const vx = posAttr.getX(i);
+      const vz = posAttr.getZ(i);
+      const vy = getTerrainHeight(vx, vz);
+      posAttr.setY(i, vy);
+
+      if (vy < 0.5) {
+        colorAttr[i * 3]     = 0.78;
+        colorAttr[i * 3 + 1] = 0.68;
+        colorAttr[i * 3 + 2] = 0.48;
+      } else if (vy < 28) {
+        const factor = vy / 28;
+        colorAttr[i * 3]     = 0.28 + factor * 0.12;
+        colorAttr[i * 3 + 1] = 0.46 - factor * 0.08;
+        colorAttr[i * 3 + 2] = 0.20 + factor * 0.10;
+      } else {
+        const factor = Math.min(1.0, (vy - 28) / 35);
+        colorAttr[i * 3]     = 0.48 + factor * 0.32;
+        colorAttr[i * 3 + 1] = 0.45 + factor * 0.32;
+        colorAttr[i * 3 + 2] = 0.44 + factor * 0.35;
+      }
+    }
+
+    terrainGeo.setAttribute('color', new THREE.BufferAttribute(colorAttr, 3));
+    terrainGeo.computeVertexNormals();
+
+    const terrainTex = createTerrainTexture();
+    const terrainMat = new THREE.MeshStandardMaterial({
+      map: terrainTex,
+      vertexColors: true,
+      roughness: 0.85,
+      metalness: 0.1
+    });
+    const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
+    terrainMesh.receiveShadow = true;
+    scene.add(terrainMesh);
+
+    // Animated Lake Surface Geometry
+    const waterRes = 48;
+    const waterGeo = new THREE.PlaneGeometry(152, 152, waterRes, waterRes);
+    waterGeo.rotateX(-Math.PI / 2);
+    const waterMat = new THREE.MeshStandardMaterial({
+      color: 0x0088cc,
+      roughness: 0.08,
+      metalness: 0.88,
+      transparent: true,
+      opacity: 0.82
+    });
+    const waterMesh = new THREE.Mesh(waterGeo, waterMat);
+    waterMesh.position.set(180, -0.2, 0);
+    scene.add(waterMesh);
+
+    /* =========================================================================
+       5. PHYSICAL AABB CITY, AIRPORT & BRIDGE ARCHITECTURE
+       ========================================================================= */
+    const collidableBoxes = [];
+
+    const asphaltTex = createAsphaltTexture();
+    asphaltTex.repeat.set(1, 4);
+    const runwayMat = new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.85 });
+
+    const runway = new THREE.Mesh(new THREE.BoxGeometry(26, 0.2, 90), runwayMat);
+    runway.position.set(0, 0.08, 0);
+    runway.receiveShadow = true;
+    scene.add(runway);
+
+    // Airport Runway Center Dashes
+    const whiteLineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    for (let z = -38; z <= 38; z += 12) {
+      const dash = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 6), whiteLineMat);
+      dash.position.set(0, 0.22, z);
+      scene.add(dash);
+    }
+
+    // Runway Edge Lights (Emissive Mesh Markers)
+    const edgeLightMatGreen = new THREE.MeshBasicMaterial({ color: 0x00ff66 });
+    const edgeLightMatRed = new THREE.MeshBasicMaterial({ color: 0xff2222 });
+    for (let z = -44; z <= 44; z += 11) {
+      const l1 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), (z === -44 || z === 44) ? edgeLightMatRed : edgeLightMatGreen);
+      l1.position.set(-13.5, 0.35, z);
+      scene.add(l1);
+      const l2 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), (z === -44 || z === 44) ? edgeLightMatRed : edgeLightMatGreen);
+      l2.position.set(13.5, 0.35, z);
+      scene.add(l2);
+    }
+
+    // Airport Hangar (AABB Box Collider)
+    const hangarMat = new THREE.MeshStandardMaterial({ color: 0x444b54, metalness: 0.7, roughness: 0.4 });
+    const hangar = new THREE.Mesh(new THREE.BoxGeometry(24, 14, 30), hangarMat);
+    hangar.position.set(-30, 7, 15);
+    hangar.castShadow = true;
+    scene.add(hangar);
+    hangar.updateMatrixWorld(true);
+    collidableBoxes.push(new THREE.Box3().setFromObject(hangar));
+
+    // Airport Control Tower (AABB Box Collider)
+    const towerMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.4 });
+    const controlTower = new THREE.Mesh(new THREE.BoxGeometry(6, 36, 6), towerMat);
+    controlTower.position.set(-28, 18, -25);
+    controlTower.castShadow = true;
+    scene.add(controlTower);
+    controlTower.updateMatrixWorld(true);
+    collidableBoxes.push(new THREE.Box3().setFromObject(controlTower));
+
+    const cabGeo = new THREE.BoxGeometry(10, 5, 10);
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x112233, metalness: 0.9, roughness: 0.1 });
+    const towerCab = new THREE.Mesh(cabGeo, glassMat);
+    towerCab.position.set(-28, 36, -25);
+    scene.add(towerCab);
+    towerCab.updateMatrixWorld(true);
+    collidableBoxes.push(new THREE.Box3().setFromObject(towerCab));
+
+    // Procedural Window Grid Texture for City Buildings
+    const buildingTex = createBuildingTexture();
+    buildingTex.repeat.set(1, 3);
+    const buildingMat = new THREE.MeshStandardMaterial({
+      map: buildingTex,
+      roughness: 0.35,
+      metalness: 0.65
+    });
+
+    const cityX = -150;
+    const cityZ = -140;
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        const bx = cityX + c * 35;
+        const bz = cityZ + r * 35;
+        const by = getTerrainHeight(bx, bz);
+        const bHeight = 45 + ((r * 4 + c) % 5) * 15;
+        const bWidth = 18;
+        const bDepth = 18;
+
+        const bGeo = new THREE.BoxGeometry(bWidth, bHeight, bDepth);
+        const bMesh = new THREE.Mesh(bGeo, buildingMat);
+        bMesh.position.set(bx, by + bHeight * 0.5, bz);
+        bMesh.castShadow = true;
+        bMesh.receiveShadow = true;
+        scene.add(bMesh);
+
+        bMesh.updateMatrixWorld(true);
+        collidableBoxes.push(new THREE.Box3().setFromObject(bMesh));
+
+        // Rooftop Beacon Lights
+        const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff3300 }));
+        beacon.position.set(bx, by + bHeight + 0.5, bz);
+        scene.add(beacon);
+      }
+    }
+
+    // Canyon Suspension Bridge (Deck + Arches with AABB Colliders)
+    const bridgeGroup = new THREE.Group();
+    scene.add(bridgeGroup);
+    const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(14, 1.5, 95), runwayMat);
+    bridgeDeck.position.set(0, 16, 125);
+    bridgeDeck.castShadow = true;
+    bridgeGroup.add(bridgeDeck);
+    bridgeDeck.updateMatrixWorld(true);
+    collidableBoxes.push(new THREE.Box3().setFromObject(bridgeDeck));
+
+    const archMat = new THREE.MeshStandardMaterial({ color: 0xcc3322, metalness: 0.6, roughness: 0.4 });
+    const arch1 = new THREE.Mesh(new THREE.BoxGeometry(16, 28, 3), archMat);
+    arch1.position.set(0, 24, 90);
+    bridgeGroup.add(arch1);
+    arch1.updateMatrixWorld(true);
+    collidableBoxes.push(new THREE.Box3().setFromObject(arch1));
+
+    const arch2 = new THREE.Mesh(new THREE.BoxGeometry(16, 28, 3), archMat);
+    arch2.position.set(0, 24, 160);
+    bridgeGroup.add(arch2);
+    arch2.updateMatrixWorld(true);
+    collidableBoxes.push(new THREE.Box3().setFromObject(arch2));
+
+    // Highway Moving Vehicles
+    const highwayCars = [];
+    const carMatRed = new THREE.MeshStandardMaterial({ color: 0xee2222, metalness: 0.8 });
+    const carMatBlue = new THREE.MeshStandardMaterial({ color: 0x2266ee, metalness: 0.8 });
+    for (let i = 0; i < 4; i++) {
+      const car = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.4, 4.5), (i % 2 === 0) ? carMatRed : carMatBlue);
+      car.position.set((i % 2 === 0) ? -3.5 : 3.5, 17.5, 90 + i * 20);
+      car.castShadow = true;
+      bridgeGroup.add(car);
+      highwayCars.push({ mesh: car, speed: (i % 2 === 0) ? 18 : -18, minZ: 75, maxZ: 175 });
+    }
+
+    // Wind Turbines
+    const turbines = [];
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const tx = Math.sin(angle) * 220;
+      const tz = Math.cos(angle) * 220;
+      const ty = getTerrainHeight(tx, tz);
+
+      const turbineTower = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 2.4, 45, 16), towerMat);
+      turbineTower.position.set(tx, ty + 22.5, tz);
+      turbineTower.castShadow = true;
+      scene.add(turbineTower);
+
+      const nacelle = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 5), towerMat);
+      nacelle.position.set(tx, ty + 45, tz);
+      scene.add(nacelle);
+
+      const hub = new THREE.Group();
+      hub.position.set(tx, ty + 45, tz + 2.6);
+      scene.add(hub);
+
+      for (let b = 0; b < 3; b++) {
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.5, 16, 0.15), towerMat);
+        blade.rotation.z = (b * Math.PI * 2) / 3;
+        blade.position.set(Math.sin(blade.rotation.z) * 8, Math.cos(blade.rotation.z) * 8, 0);
+        hub.add(blade);
+      }
+      turbines.push(hub);
+    }
+
+    /* =========================================================================
+       6. INTERACTIVE NEON GATES, ORBS & BOOST RINGS
+       ========================================================================= */
+    const raceGates = [];
+    const totalGateCount = 12;
+    const gatePath = [
+      { x: 0, y: 12, z: 40 },
+      { x: 30, y: 16, z: 90 },
+      { x: 0, y: 22, z: 130 },
+      { x: -50, y: 18, z: 120 },
+      { x: -110, y: 28, z: 60 },
+      { x: -140, y: 35, z: -40 },
+      { x: -150, y: 55, z: -130 },
+      { x: -80, y: 40, z: -150 },
+      { x: 20, y: 30, z: -120 },
+      { x: 140, y: 16, z: -60 },
+      { x: 180, y: 12, z: 0 },
+      { x: 90, y: 14, z: 25 }
+    ];
+
+    gatePath.forEach((gp, idx) => {
+      const nextGp = gatePath[(idx + 1) % gatePath.length];
+      const lookVec = new THREE.Vector3(nextGp.x - gp.x, nextGp.y - gp.y, nextGp.z - gp.z).normalize();
+
+      const ringGroup = new THREE.Group();
+      ringGroup.position.set(gp.x, gp.y, gp.z);
+      ringGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), lookVec);
+
+      const gateMat = new THREE.MeshBasicMaterial({ color: (idx === 0) ? 0x00ffff : 0xffaa00 });
+      const ringMesh = new THREE.Mesh(new THREE.TorusGeometry(5.2, 0.35, 8, 24), gateMat);
+      ringGroup.add(ringMesh);
+
+      scene.add(ringGroup);
+      raceGates.push({
+        group: ringGroup,
+        mesh: ringMesh,
+        mat: gateMat,
+        pos: new THREE.Vector3(gp.x, gp.y, gp.z),
+        radius: 6.0
+      });
+    });
+
+    const energyOrbs = [];
+    const orbGeo = new THREE.IcosahedronGeometry(1.2, 2);
+    const orbMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+
+    for (let i = 0; i < 20; i++) {
+      let ox, oz, oy;
+      if (i < 5) {
+        ox = cityX + (i % 3) * 35;
+        oz = cityZ + Math.floor(i / 3) * 35;
+        oy = getTerrainHeight(ox, oz) + 70;
+      } else if (i < 10) {
+        ox = (i % 2 === 0) ? 0 : 25;
+        oz = 90 + (i - 5) * 15;
+        oy = 18;
+      } else if (i < 15) {
+        ox = 150 + (i - 10) * 15;
+        oz = (i - 12) * 18;
+        oy = 3.5;
+      } else {
+        ox = 200 + (i - 15) * 20;
+        oz = 160;
+        oy = getTerrainHeight(ox, oz) + 5;
+      }
+
+      const orbMesh = new THREE.Mesh(orbGeo, orbMat.clone());
+      orbMesh.position.set(ox, oy, oz);
+      scene.add(orbMesh);
+
+      energyOrbs.push({
+        mesh: orbMesh,
+        pos: new THREE.Vector3(ox, oy, oz),
+        collected: false
+      });
+    }
+
+    const boostRings = [
+      { pos: new THREE.Vector3(0, 16.5, 110), dir: new THREE.Vector3(0, 0, 1) },
+      { pos: new THREE.Vector3(180, 8, 0), dir: new THREE.Vector3(-1, 0, 0) }
+    ];
+    boostRings.forEach((br) => {
+      const bMat = new THREE.MeshBasicMaterial({ color: 0xff3300 });
+      const bMesh = new THREE.Mesh(new THREE.TorusGeometry(6.5, 0.5, 8, 24), bMat);
+      bMesh.position.copy(br.pos);
+      bMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), br.dir);
+      scene.add(bMesh);
+      br.mesh = bMesh;
+    });
+
+    /* =========================================================================
+       7. DYNAMIC PARTICLE SYSTEMS (PROP-WASH DUST, WIND LINES, CRASH DEBRIS)
+       ========================================================================= */
+    // 1. Ground Prop-Wash Dust System
+    const dustCount = 80;
+    const dustGeo = new THREE.BufferGeometry();
+    const dustPos = new Float32Array(dustCount * 3);
+    const dustAlpha = new Float32Array(dustCount);
+    const dustParticlesData = [];
+
+    for (let i = 0; i < dustCount; i++) {
+      dustPos[i * 3] = 0;
+      dustPos[i * 3 + 1] = -100;
+      dustPos[i * 3 + 2] = 0;
+      dustAlpha[i] = 0.0;
+      dustParticlesData.push({
+        active: false,
+        x: 0, y: 0, z: 0,
+        vx: 0, vz: 0,
+        life: 0, maxLife: 1.0
+      });
+    }
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+
+    const dustMat = new THREE.PointsMaterial({
+      color: 0x9e8a70,
+      size: 1.4,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false
+    });
+    const dustSystem = new THREE.Points(dustGeo, dustMat);
+    scene.add(dustSystem);
+
+    function updatePropWashDust(dt, dronePos, altitudeAGL, throttle) {
+      if (altitudeAGL < 2.5 && throttle > 0.15) {
+        const emitCount = Math.floor(throttle * 3);
+        for (let e = 0; e < emitCount; e++) {
+          const idx = Math.floor(Math.random() * dustCount);
+          const p = dustParticlesData[idx];
+          if (!p.active) {
+            p.active = true;
+            const angle = Math.random() * Math.PI * 2;
+            const r = 0.3 + Math.random() * 0.4;
+            p.x = dronePos.x + Math.sin(angle) * r;
+            p.y = dronePos.y - altitudeAGL + 0.08;
+            p.z = dronePos.z + Math.cos(angle) * r;
+            p.vx = Math.sin(angle) * (2.5 + throttle * 4.0);
+            p.vz = Math.cos(angle) * (2.5 + throttle * 4.0);
+            p.life = 0.0;
+            p.maxLife = 0.45 + Math.random() * 0.35;
+          }
+        }
+      }
+
+      const pPos = dustGeo.attributes.position.array;
+      for (let i = 0; i < dustCount; i++) {
+        const p = dustParticlesData[i];
+        if (p.active) {
+          p.life += dt;
+          p.x += p.vx * dt;
+          p.z += p.vz * dt;
+          p.y += 0.3 * dt;
+          pPos[i * 3] = p.x;
+          pPos[i * 3 + 1] = p.y;
+          pPos[i * 3 + 2] = p.z;
+          if (p.life >= p.maxLife) {
+            p.active = false;
+            pPos[i * 3 + 1] = -100;
+          }
+        }
+      }
+      dustGeo.attributes.position.needsUpdate = true;
+    }
+
+    // 2. High-Speed Wind Lines System
+    const windLineCount = 45;
+    const windLineGeo = new THREE.BufferGeometry();
+    const windLinePos = new Float32Array(windLineCount * 6);
+    const windLinesData = [];
+
+    for (let i = 0; i < windLineCount; i++) {
+      windLinesData.push({
+        active: false,
+        ox: 0, oy: 0, oz: 0,
+        len: 4.0
+      });
+      windLinePos[i * 6] = 0;
+      windLinePos[i * 6 + 1] = -100;
+      windLinePos[i * 6 + 2] = 0;
+      windLinePos[i * 6 + 3] = 0;
+      windLinePos[i * 6 + 4] = -100;
+      windLinePos[i * 6 + 5] = 0;
+    }
+    windLineGeo.setAttribute('position', new THREE.BufferAttribute(windLinePos, 3));
+
+    const windLineMat = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.0
+    });
+    const windLinesMesh = new THREE.LineSegments(windLineGeo, windLineMat);
+    scene.add(windLinesMesh);
+
+    function updateWindLines(dt, speedKmh, dronePos, droneVel, isBoost) {
+      if (speedKmh > 80 || isBoost) {
+        windLineMat.opacity = Math.min(0.7, (speedKmh - 70) / 90);
+        const lPos = windLineGeo.attributes.position.array;
+        const velNorm = droneVel.clone().normalize();
+
+        for (let i = 0; i < windLineCount; i++) {
+          const l = windLinesData[i];
+          if (!l.active || Math.random() < 0.08) {
+            l.active = true;
+            l.ox = dronePos.x + (Math.random() - 0.5) * 7.0;
+            l.oy = dronePos.y + (Math.random() - 0.5) * 5.0;
+            l.oz = dronePos.z + (Math.random() - 0.5) * 7.0;
+            l.len = 3.5 + Math.random() * 4.0;
+          }
+          l.ox -= velNorm.x * 35.0 * dt;
+          l.oy -= velNorm.y * 35.0 * dt;
+          l.oz -= velNorm.z * 35.0 * dt;
+
+          lPos[i * 6] = l.ox;
+          lPos[i * 6 + 1] = l.oy;
+          lPos[i * 6 + 2] = l.oz;
+          lPos[i * 6 + 3] = l.ox - velNorm.x * l.len;
+          lPos[i * 6 + 4] = l.oy - velNorm.y * l.len;
+          lPos[i * 6 + 5] = l.oz - velNorm.z * l.len;
+        }
+        windLineGeo.attributes.position.needsUpdate = true;
+      } else {
+        windLineMat.opacity = 0.0;
+      }
+    }
+
+    // 3. Collision Crash Debris System
+    const debrisCount = 40;
+    const debrisGeo = new THREE.BufferGeometry();
+    const debrisPos = new Float32Array(debrisCount * 3);
+    const debrisData = [];
+
+    for (let i = 0; i < debrisCount; i++) {
+      debrisPos[i * 3] = 0;
+      debrisPos[i * 3 + 1] = -100;
+      debrisPos[i * 3 + 2] = 0;
+      debrisData.push({
+        active: false,
+        x: 0, y: 0, z: 0,
+        vx: 0, vy: 0, vz: 0,
+        life: 0, maxLife: 0.8
+      });
+    }
+    debrisGeo.setAttribute('position', new THREE.BufferAttribute(debrisPos, 3));
+
+    const debrisMat = new THREE.PointsMaterial({
+      color: 0xffaa33,
+      size: 1.2,
+      transparent: true,
+      opacity: 0.95
+    });
+    const debrisSystem = new THREE.Points(debrisGeo, debrisMat);
+    scene.add(debrisSystem);
+
+    function triggerCrashDebris(impactPoint) {
+      for (let i = 0; i < debrisCount; i++) {
+        const d = debrisData[i];
+        d.active = true;
+        d.x = impactPoint.x;
+        d.y = impactPoint.y;
+        d.z = impactPoint.z;
+        d.vx = (Math.random() - 0.5) * 22.0;
+        d.vy = Math.random() * 14.0 + 3.0;
+        d.vz = (Math.random() - 0.5) * 22.0;
+        d.life = 0.0;
+        d.maxLife = 0.6 + Math.random() * 0.4;
+      }
+    }
+
+    function updateCrashDebris(dt) {
+      const dPos = debrisGeo.attributes.position.array;
+      for (let i = 0; i < debrisCount; i++) {
+        const d = debrisData[i];
+        if (d.active) {
+          d.life += dt;
+          d.vy -= 22.0 * dt;
+          d.x += d.vx * dt;
+          d.y += d.vy * dt;
+          d.z += d.vz * dt;
+          dPos[i * 3] = d.x;
+          dPos[i * 3 + 1] = d.y;
+          dPos[i * 3 + 2] = d.z;
+          if (d.life >= d.maxLife || d.y < 0) {
+            d.active = false;
+            dPos[i * 3 + 1] = -100;
+          }
+        }
+      }
+      debrisGeo.attributes.position.needsUpdate = true;
+    }
+
+    /* =========================================================================
+       8. GLTF/GLB DRONE ENGINE - DIRECT LOCAL ASSETS & DRACO FALLBACK
+       ========================================================================= */
+    const droneRoot = new THREE.Group();
+    scene.add(droneRoot);
+
+    let loadedDroneModel = null;
+    const motorProps = [];
+
+    const LOCAL_PRIMARY = "primary_drone.glb";
+    const FALLBACK_DRACO = "drone_model.glb";
+    const REMOTE_PRIMARY = "https://raw.githubusercontent.com/kanishk083/DRONE-DETECTION/main/dji_fpv_by_sdc_-__high_performance_drone.glb";
+
+    const gltfLoader = new THREE.GLTFLoader();
+
+    // Configure DRACOLoader with Google Draco WASM decoder
+    const dracoLoader = new THREE.DRACOLoader();
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.4.3/');
+    gltfLoader.setDRACOLoader(dracoLoader);
+
+    const modelStatusEl = document.getElementById('model-status');
+
+    function updateModelStatus(text) {
+      if (modelStatusEl) modelStatusEl.innerText = text;
+    }
+
+    function setupLoadedDrone(modelScene) {
+      if (loadedDroneModel) droneRoot.remove(loadedDroneModel);
+      motorProps.length = 0;
+
+      loadedDroneModel = modelScene;
+
+      // Compute bounding box and normalize pivot & scale
+      const bbox = new THREE.Box3().setFromObject(loadedDroneModel);
+      const size = new THREE.Vector3();
+      bbox.getSize(size);
+      const center = new THREE.Vector3();
+      bbox.getCenter(center);
+
+      loadedDroneModel.position.x = -center.x;
+      loadedDroneModel.position.y = -center.y;
+      loadedDroneModel.position.z = -center.z;
+
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const targetScale = maxDim > 0 ? (0.7 / maxDim) : 1.0;
+      loadedDroneModel.scale.set(targetScale, targetScale, targetScale);
+
+      // Dynamic Rotor Binding
+      loadedDroneModel.traverse((node) => {
+        if (node.isMesh) {
+          node.castShadow = true;
+          node.receiveShadow = true;
+          const name = node.name.toLowerCase();
+
+          // Bind Cylinder.155 to Cylinder.158 and any prop/rotor mesh
+          const isPropMesh = name.includes('cylinder.155') ||
+                             name.includes('cylinder.156') ||
+                             name.includes('cylinder.157') ||
+                             name.includes('cylinder.158') ||
+                             name.includes('prop') ||
+                             name.includes('rotor') ||
+                             name.includes('blade') ||
+                             name.includes('fan');
+
+          if (isPropMesh) {
+            motorProps.push({
+              mesh: node,
+              dir: (motorProps.length % 2 === 0) ? 1 : -1,
+              rpm: 0
+            });
+          }
+        }
+      });
+
+      droneRoot.add(loadedDroneModel);
+      updateModelStatus(`3D Drone Armed: ${motorProps.length} Rotors Dynamically Bound`);
+      setTimeout(() => {
+        if (modelStatusEl) modelStatusEl.style.display = 'none';
+      }, 4000);
+    }
+
+    function loadPrimaryOrFallback() {
+      updateModelStatus("Loading Primary Drone Asset (primary_drone.glb)...");
+
+      gltfLoader.load(
+        LOCAL_PRIMARY,
+        (gltf) => {
+          setupLoadedDrone(gltf.scene);
+        },
+        undefined,
+        (err) => {
+          console.warn("Local primary load failed, attempting Draco fallback:", err);
+          updateModelStatus("Attempting Fallback (drone_model.glb with Draco)...");
+          gltfLoader.load(
+            FALLBACK_DRACO,
+            (fallbackGltf) => {
+              setupLoadedDrone(fallbackGltf.scene);
+            },
+            undefined,
+            (err2) => {
+              console.warn("Local fallback failed, attempting remote primary:", err2);
+              gltfLoader.load(
+                REMOTE_PRIMARY,
+                (remoteGltf) => {
+                  setupLoadedDrone(remoteGltf.scene);
+                },
+                undefined,
+                () => {
+                  updateModelStatus("Use 'Import Local GLB' or drag-drop .glb onto screen.");
+                }
+              );
+            }
+          );
+        }
+      );
+    }
+
+    // Drag-and-Drop + File Input Parsing
+    function handleLocalFile(file) {
+      updateModelStatus(`Parsing GLB File: ${file.name}...`);
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const arrayBuffer = e.target.result;
+        gltfLoader.parse(
+          arrayBuffer,
+          '',
+          (gltf) => {
+            setupLoadedDrone(gltf.scene);
+          },
+          (err) => {
+            console.error("GLTF Parse Error:", err);
+            updateModelStatus("Failed to parse GLB file.");
+          }
+        );
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    document.getElementById('btn-import-drone').addEventListener('click', () => {
+      document.getElementById('drone-file-input').click();
+    });
+
+    document.getElementById('drone-file-input').addEventListener('change', (e) => {
+      if (e.target.files.length > 0) handleLocalFile(e.target.files[0]);
+    });
+
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer.files.length > 0) handleLocalFile(e.dataTransfer.files[0]);
+    });
+
+    loadPrimaryOrFallback();
+
+    /* =========================================================================
+       9. 6-DOF FLIGHT DYNAMICS & GAMEPAD API INTEGRATION
+       ========================================================================= */
+    const drone = {
+      pos: new THREE.Vector3(0, 0.45, 0),
+      vel: new THREE.Vector3(0, 0, 0),
+      quat: new THREE.Quaternion(),
+      euler: new THREE.Euler(0, 0, 0, 'YXZ'),
+      angVel: new THREE.Vector3(0, 0, 0),
+
+      mass: 0.68,
+      gravity: 9.81,
+      dragCoeff: 0.28,
+      angularDrag: 0.88,
+      maxThrust: 35.0,
+
+      flightMode: 0,
+      maxTilt: (48 * Math.PI) / 180,
+      maxRate: (580 * Math.PI) / 180,
+
+      throttle: 0.0,
+      boostTimer: 0.0,
+      altitudeAGL: 0.45,
+      groundEffectActive: false,
+
+      voltage: 16.8,
+      amperage: 0.4,
+      consumedMAh: 0,
+
+      camMode: 0,
+      fpvUptilt: (30 * Math.PI) / 180
+    };
+
+    const keys = {};
+    window.addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+      if (e.code === 'KeyC') toggleCam();
+      if (e.code === 'KeyM') toggleMode();
+      if (e.code === 'KeyR') resetToPad();
+      if (e.code === 'BracketLeft') drone.fpvUptilt = Math.max(0, drone.fpvUptilt - 0.08);
+      if (e.code === 'BracketRight') drone.fpvUptilt = Math.min(Math.PI / 3, drone.fpvUptilt + 0.08);
+    });
+    window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+    function toggleCam() { drone.camMode = (drone.camMode === 0) ? 1 : 0; }
+    function toggleMode() { drone.flightMode = (drone.flightMode === 0) ? 1 : 0; }
+    function resetToPad() {
+      drone.pos.set(0, 0.45, 0);
+      drone.vel.set(0, 0, 0);
+      drone.quat.identity();
+      drone.euler.set(0, 0, 0);
+      drone.angVel.set(0, 0, 0);
+      drone.throttle = 0;
+      drone.boostTimer = 0;
+    }
+
+    document.getElementById('btn-toggle-cam').addEventListener('click', toggleCam);
+    document.getElementById('btn-toggle-mode').addEventListener('click', toggleMode);
+
+    document.getElementById('audio-splash').addEventListener('click', () => {
+      audioSynth.init();
+      document.getElementById('audio-splash').style.display = 'none';
+    });
+
+    let prevGamepadBtn = {};
+    const controlSourceDisp = document.getElementById('control-source-disp');
+
+    function applyDeadzone(val, threshold = 0.08) {
+      return Math.abs(val) > threshold ? val : 0;
+    }
+
+    const fixedDt = 1 / 120;
+    function updatePhysics(dt) {
+      let pitchCmd = 0;
+      let rollCmd = 0;
+      let yawCmd = 0;
+
+      // 1. Gamepad API Polling
+      const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+      let activeGamepad = null;
+      for (let i = 0; i < gamepads.length; i++) {
+        if (gamepads[i] && gamepads[i].connected) {
+          activeGamepad = gamepads[i];
+          break;
+        }
+      }
+
+      if (activeGamepad && activeGamepad.axes.length >= 4) {
+        controlSourceDisp.innerText = `INPUT: GAMEPAD (${activeGamepad.id.substring(0, 10)})`;
+
+        // Axis 0: Left Stick X -> Yaw
+        yawCmd = applyDeadzone(activeGamepad.axes[0]);
+
+        // Axis 1: Left Stick Y inverted -> Throttle
+        const rawThrAxis = -activeGamepad.axes[1];
+        drone.throttle = Math.max(0, Math.min(1.0, (rawThrAxis + 1.0) / 2.0));
+
+        // Axis 2: Right Stick X -> Roll
+        rollCmd = applyDeadzone(activeGamepad.axes[2]);
+
+        // Axis 3: Right Stick Y inverted -> Pitch
+        pitchCmd = applyDeadzone(-activeGamepad.axes[3]);
+
+        if (activeGamepad.buttons[0] && activeGamepad.buttons[0].pressed && !prevGamepadBtn[0]) resetToPad();
+        if (activeGamepad.buttons[1] && activeGamepad.buttons[1].pressed && !prevGamepadBtn[1]) toggleCam();
+        if (activeGamepad.buttons[2] && activeGamepad.buttons[2].pressed && !prevGamepadBtn[2]) toggleMode();
+        if (activeGamepad.buttons[3] && activeGamepad.buttons[3].pressed && !prevGamepadBtn[3]) {
+          drone.boostTimer = 2.0;
+          audioSynth.playBoostSound();
+        }
+
+        for (let b = 0; b < activeGamepad.buttons.length; b++) {
+          prevGamepadBtn[b] = activeGamepad.buttons[b].pressed;
+        }
+      } else {
+        controlSourceDisp.innerText = "INPUT: KEYBOARD";
+
+        let thrTarget = drone.throttle;
+        if (keys['KeyW'] || keys['ArrowUp']) thrTarget += dt * 1.5;
+        if (keys['KeyS'] || keys['ArrowDown']) thrTarget -= dt * 1.5;
+        if (keys['Space']) thrTarget = Math.max(thrTarget, 0.90);
+        if (keys['ShiftLeft']) thrTarget = Math.min(thrTarget, 0.12);
+        drone.throttle = Math.max(0, Math.min(1.0, thrTarget));
+
+        if (keys['KeyI'] || keys['Numpad8']) pitchCmd += 1.0;
+        if (keys['KeyK'] || keys['Numpad2']) pitchCmd -= 1.0;
+
+        if (keys['KeyL'] || keys['Numpad6']) rollCmd += 1.0;
+        if (keys['KeyJ'] || keys['Numpad4']) rollCmd -= 1.0;
+
+        if (keys['KeyD'] || keys['ArrowRight']) yawCmd += 1.0;
+        if (keys['KeyA'] || keys['ArrowLeft']) yawCmd -= 1.0;
+      }
+
+      // 2. Flight Attitude / Rate PID Stabilization
+      drone.euler.setFromQuaternion(drone.quat, 'YXZ');
+
+      if (drone.flightMode === 0) {
+        const targetPitch = -pitchCmd * drone.maxTilt;
+        const targetRoll = rollCmd * drone.maxTilt;
+
+        const pitchTorque = (targetPitch - drone.euler.x) * 16.0 - drone.angVel.x * 4.0;
+        const rollTorque = (targetRoll - drone.euler.z) * 16.0 - drone.angVel.z * 4.0;
+        const yawTorque = -yawCmd * 6.5 - drone.angVel.y * 2.5;
+
+        drone.angVel.x += pitchTorque * dt;
+        drone.angVel.z += rollTorque * dt;
+        drone.angVel.y += yawTorque * dt;
+      } else {
+        const targetPitchRate = -pitchCmd * drone.maxRate;
+        const targetRollRate = rollCmd * drone.maxRate;
+        const targetYawRate = -yawCmd * (drone.maxRate * 0.75);
+
+        drone.angVel.x += (targetPitchRate - drone.angVel.x) * 14.0 * dt;
+        drone.angVel.z += (targetRollRate - drone.angVel.z) * 14.0 * dt;
+        drone.angVel.y += (targetYawRate - drone.angVel.y) * 11.0 * dt;
+      }
+
+      drone.angVel.multiplyScalar(Math.pow(1 - drone.angularDrag, dt));
+
+      const deltaRot = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(drone.angVel.x, drone.angVel.y, drone.angVel.z).normalize(),
+        drone.angVel.length() * dt
+      );
+      if (drone.angVel.length() > 0.0001) {
+        drone.quat.multiply(deltaRot).normalize();
+      }
+
+      // 3. Aerodynamics & Ground Effect
+      const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(drone.quat);
+      let totalThrust = drone.throttle * drone.maxThrust;
+
+      if (drone.boostTimer > 0) {
+        drone.boostTimer -= dt;
+        totalThrust *= 1.85;
+      }
+
+      const groundY = getTerrainHeight(drone.pos.x, drone.pos.z);
+      drone.altitudeAGL = Math.max(0.01, drone.pos.y - groundY);
+
+      if (drone.altitudeAGL < 1.3) {
+        drone.groundEffectActive = true;
+        const factor = 1.0 + Math.pow(Math.max(0, (1.3 - drone.altitudeAGL) / 1.3), 2) * 0.5;
+        totalThrust *= factor;
+      } else {
+        drone.groundEffectActive = false;
+      }
+
+      const thrustForce = upVector.clone().multiplyScalar(totalThrust);
+      const gravityForce = new THREE.Vector3(0, -drone.mass * drone.gravity, 0);
+
+      const relAirflow = drone.vel.clone();
+      const airSpeed = relAirflow.length();
+      const dragForce = relAirflow.normalize().multiplyScalar(-0.5 * 1.225 * drone.dragCoeff * airSpeed * airSpeed);
+
+      const totalForce = thrustForce.add(gravityForce).add(dragForce);
+      const accel = totalForce.divideScalar(drone.mass);
+
+      drone.vel.add(accel.multiplyScalar(dt));
+      drone.pos.add(drone.vel.clone().multiplyScalar(dt));
+
+      // Ground Terrain Collision Response
+      if (drone.pos.y < groundY + 0.18) {
+        if (drone.vel.length() > 18) {
+          triggerCrashEffect();
+          triggerCrashDebris(drone.pos);
+        }
+        drone.pos.y = groundY + 0.18;
+        if (drone.vel.y < 0) {
+          drone.vel.y = -drone.vel.y * 0.2;
+          drone.vel.x *= 0.6;
+          drone.vel.z *= 0.6;
+        }
+        drone.angVel.multiplyScalar(0.75);
+      }
+
+      // 4. Rotor Dynamics Execution on Loaded Meshes
+      motorProps.forEach((p) => {
+        const targetRpm = 1800 + drone.throttle * 28000;
+        p.rpm += (targetRpm - p.rpm) * dt * 18;
+        p.mesh.rotation.y += p.dir * p.rpm * (Math.PI / 30) * dt;
+      });
+
+      // Battery Simulation
+      const motorAmps = drone.throttle * 72.0;
+      drone.amperage = 0.4 + motorAmps;
+      drone.voltage = Math.max(12.0, 16.8 - (drone.amperage * 0.024) - (drone.consumedMAh / 1500) * 2.8);
+      drone.consumedMAh += (drone.amperage * 1000) * (dt / 3600);
+    }
+
+    function triggerCrashEffect() {
+      audioSynth.playCrashSound();
+      const glitch = document.getElementById('crash-glitch');
+      glitch.style.display = 'block';
+      setTimeout(() => { glitch.style.display = 'none'; }, 250);
+    }
+
+    /* =========================================================================
+       10. PHYSICAL AABB COLLISIONS & INTERACTION ENGINE
+       ========================================================================= */
+    let currentGateIndex = 0;
+    let raceActive = false;
+    let raceStartTime = 0;
+    let currentRaceTime = 0;
+    let bestRaceTime = null;
+    let collectedOrbsCount = 0;
+
+    const droneBox = new THREE.Box3();
+    const droneHalfExtent = new THREE.Vector3(0.35, 0.15, 0.35);
+
+    function checkInteractions() {
+      // 1. Dynamic AABB Collision with Restitution Bounce & Surface Pushing
+      droneBox.min.copy(drone.pos).sub(droneHalfExtent);
+      droneBox.max.copy(drone.pos).add(droneHalfExtent);
+
+      for (let i = 0; i < collidableBoxes.length; i++) {
+        const obstacleBox = collidableBoxes[i];
+        if (droneBox.intersectsBox(obstacleBox)) {
+          triggerCrashEffect();
+          triggerCrashDebris(drone.pos);
+
+          const closestPoint = new THREE.Vector3();
+          obstacleBox.clampPoint(drone.pos, closestPoint);
+
+          const normal = drone.pos.clone().sub(closestPoint);
+          if (normal.lengthSq() < 0.0001) {
+            normal.set(0, 1, 0);
+          } else {
+            normal.normalize();
+          }
+
+          // Push drone along normal to eliminate wall ghosting
+          drone.pos.copy(closestPoint).add(normal.multiplyScalar(0.38));
+
+          // Physical restitution bounce (e = 0.35)
+          const dot = drone.vel.dot(normal);
+          if (dot < 0) {
+            drone.vel.sub(normal.clone().multiplyScalar((1.0 + 0.35) * dot));
+            drone.vel.multiplyScalar(0.7); // Friction dampening
+          }
+
+          drone.angVel.x += (Math.random() - 0.5) * 12.0;
+          drone.angVel.y += (Math.random() - 0.5) * 12.0;
+          drone.angVel.z += (Math.random() - 0.5) * 12.0;
+
+          break;
+        }
+      }
+
+      // 2. Race Gates Detection
+      const activeGate = raceGates[currentGateIndex];
+      if (activeGate && drone.pos.distanceTo(activeGate.pos) < activeGate.radius) {
+        audioSynth.playGateChime();
+        activeGate.mat.color.setHex(0x00ff88);
+
+        if (currentGateIndex === 0 && !raceActive) {
+          raceActive = true;
+          raceStartTime = performance.now();
+        }
+
+        currentGateIndex++;
+        if (currentGateIndex >= raceGates.length) {
+          raceActive = false;
+          if (!bestRaceTime || currentRaceTime < bestRaceTime) {
+            bestRaceTime = currentRaceTime;
+            document.getElementById('best-lap-disp').innerText = `BEST: ${bestRaceTime.toFixed(2)}s`;
+          }
+          setTimeout(() => {
+            currentGateIndex = 0;
+            raceGates.forEach((g, i) => g.mat.color.setHex(i === 0 ? 0x00ffff : 0xffaa00));
+          }, 2500);
+        } else {
+          raceGates[currentGateIndex].mat.color.setHex(0x00ffff);
+        }
+      }
+
+      // 3. Energy Orbs Collection
+      energyOrbs.forEach((orb) => {
+        if (!orb.collected && drone.pos.distanceTo(orb.pos) < 3.2) {
+          orb.collected = true;
+          scene.remove(orb.mesh);
+          audioSynth.playOrbCollectSound();
+          collectedOrbsCount++;
+          document.getElementById('orbs-info').innerText = `ORBS: ${collectedOrbsCount} / 20`;
+        }
+      });
+
+      // 4. Boost Rings
+      boostRings.forEach((br) => {
+        if (drone.pos.distanceTo(br.pos) < 6.5) {
+          if (drone.boostTimer <= 0) {
+            drone.boostTimer = 2.0;
+            audioSynth.playBoostSound();
+          }
+        }
+      });
+    }
+
+    /* =========================================================================
+       11. RADAR MINIMAP RENDERING
+       ========================================================================= */
+    const radarCanvas = document.getElementById('radar-canvas');
+    const radarCtx = radarCanvas.getContext('2d');
+
+    function renderRadar() {
+      radarCtx.clearRect(0, 0, 150, 150);
+      const cx = 75, cy = 75;
+
+      radarCtx.strokeStyle = 'rgba(0, 255, 136, 0.25)';
+      radarCtx.lineWidth = 1;
+      radarCtx.beginPath();
+      radarCtx.arc(cx, cy, 30, 0, Math.PI * 2);
+      radarCtx.arc(cx, cy, 60, 0, Math.PI * 2);
+      radarCtx.stroke();
+
+      radarCtx.beginPath();
+      radarCtx.moveTo(cx, 10); radarCtx.lineTo(cx, 140);
+      radarCtx.moveTo(10, cy); radarCtx.lineTo(140, cy);
+      radarCtx.stroke();
+
+      const radarScale = 0.18;
+
+      raceGates.forEach((g, idx) => {
+        const dx = (g.pos.x - drone.pos.x) * radarScale;
+        const dz = (g.pos.z - drone.pos.z) * radarScale;
+        if (Math.hypot(dx, dz) < 70) {
+          radarCtx.fillStyle = (idx === currentGateIndex) ? '#00ffff' : '#ffaa00';
+          radarCtx.beginPath();
+          radarCtx.arc(cx + dx, cy + dz, (idx === currentGateIndex) ? 4 : 2.5, 0, Math.PI * 2);
+          radarCtx.fill();
+        }
+      });
+
+      radarCtx.fillStyle = '#33ddff';
+      energyOrbs.forEach((o) => {
+        if (!o.collected) {
+          const dx = (o.pos.x - drone.pos.x) * radarScale;
+          const dz = (o.pos.z - drone.pos.z) * radarScale;
+          if (Math.hypot(dx, dz) < 70) {
+            radarCtx.fillRect(cx + dx - 1.5, cy + dz - 1.5, 3, 3);
+          }
+        }
+      });
+
+      radarCtx.save();
+      radarCtx.translate(cx, cy);
+      radarCtx.rotate(-drone.euler.y);
+      radarCtx.fillStyle = '#00ff88';
+      radarCtx.beginPath();
+      radarCtx.moveTo(0, -6);
+      radarCtx.lineTo(4, 5);
+      radarCtx.lineTo(-4, 5);
+      radarCtx.closePath();
+      radarCtx.fill();
+      radarCtx.restore();
+    }
+
+    /* =========================================================================
+       12. OSD TELEMETRY HUD & CAMERA LOGIC
+       ========================================================================= */
+    const speedDisp = document.getElementById('speed-disp');
+    const throttleDisp = document.getElementById('throttle-disp');
+    const throttleBar = document.getElementById('throttle-bar');
+    const altAglDisp = document.getElementById('alt-agl-disp');
+    const altMslDisp = document.getElementById('alt-msl-disp');
+    const batteryDisp = document.getElementById('battery-disp');
+    const flightModeDisp = document.getElementById('flight-mode-disp');
+    const camViewDisp = document.getElementById('cam-view-disp');
+    const groundEffectDisp = document.getElementById('ground-effect-disp');
+    const boostStatus = document.getElementById('boost-status');
+    const headingValue = document.getElementById('heading-value');
+    const horizonLadder = document.getElementById('horizon-ladder');
+    const compassTape = document.getElementById('compass-tape');
+    const gateInfo = document.getElementById('gate-info');
+    const lapTimeDisp = document.getElementById('lap-time');
+
+    let tapeHtml = '';
+    const cardinals = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' };
+    for (let deg = 0; deg < 720; deg += 15) {
+      const realDeg = deg % 360;
+      const label = cardinals[realDeg] || `${realDeg}°`;
+      tapeHtml += `<div style="position: absolute; left: ${deg * 4}px; font-size: 11px;">${label}</div>`;
+    }
+    compassTape.innerHTML = tapeHtml;
+
+    function updateHorizonLadder(pitchDeg, rollDeg) {
+      let svgContent = '';
+      const centerY = 210;
+      const pxPerDeg = 3.5;
+
+      for (let p = -40; p <= 40; p += 10) {
+        const y = centerY - (pitchDeg - p) * pxPerDeg;
+        if (y > 40 && y < 380) {
+          if (p === 0) {
+            svgContent += `<line x1="40" y1="${y}" x2="85" y2="${y}" stroke="#00ff88" stroke-width="2"/>`;
+            svgContent += `<line x1="135" y1="${y}" x2="180" y2="${y}" stroke="#00ff88" stroke-width="2"/>`;
+          } else {
+            const w = Math.abs(p) > 20 ? 32 : 22;
+            svgContent += `<line x1="${95 - w}" y1="${y}" x2="90" y2="${y}" stroke="#00ff88" stroke-width="1.5"/>`;
+            svgContent += `<line x1="130" y1="${y}" x2="${125 + w}" y2="${y}" stroke="#00ff88" stroke-width="1.5"/>`;
+            svgContent += `<text x="${125 + w + 5}" y="${y + 4}" fill="#00ff88" font-size="10" font-family="Courier New">${Math.abs(p)}</text>`;
+          }
+        }
+      }
+      horizonLadder.innerHTML = svgContent;
+      horizonLadder.style.transform = `rotate(${-rollDeg}deg)`;
+    }
+
+    function updateOSD() {
+      const speedKmh = drone.vel.length() * 3.6;
+      speedDisp.innerText = `SPD: ${speedKmh.toFixed(1)} km/h`;
+
+      const thrPct = Math.round(drone.throttle * 100);
+      throttleDisp.innerText = `THR: ${thrPct}%`;
+      throttleBar.style.width = `${thrPct}%`;
+
+      altAglDisp.innerText = `AGL: ${drone.altitudeAGL.toFixed(1)} m`;
+      altMslDisp.innerText = `MSL: ${drone.pos.y.toFixed(1)} m`;
+
+      groundEffectDisp.style.display = drone.groundEffectActive ? 'block' : 'none';
+      boostStatus.style.display = drone.boostTimer > 0 ? 'block' : 'none';
+
+      batteryDisp.innerText = `BAT: ${drone.voltage.toFixed(2)}V | ${drone.amperage.toFixed(1)}A | ${Math.round(drone.consumedMAh)} mAh`;
+      if (drone.voltage < 14.0) batteryDisp.classList.add('osd-warning');
+      else batteryDisp.classList.remove('osd-warning');
+
+      flightModeDisp.innerText = (drone.flightMode === 0) ? 'MODE: ANGLE [M]' : 'MODE: ACRO [M]';
+
+      const camName = (drone.camMode === 0) ? 'FPV' : 'CHASE';
+      const tiltDeg = Math.round((drone.fpvUptilt * 180) / Math.PI);
+      camViewDisp.innerText = `CAM: ${camName} (${tiltDeg}°)`;
+
+      const pitchDeg = (drone.euler.x * 180) / Math.PI;
+      const rollDeg = (drone.euler.z * 180) / Math.PI;
+      let yawDeg = (drone.euler.y * 180) / Math.PI;
+      if (yawDeg < 0) yawDeg += 360;
+
+      headingValue.innerText = `${Math.round(yawDeg).toString().padStart(3, '0')}°`;
+      compassTape.style.transform = `translateX(${-yawDeg * 4 + 170}px)`;
+
+      updateHorizonLadder(pitchDeg, rollDeg);
+
+      gateInfo.innerText = `GATE: ${currentGateIndex} / ${raceGates.length}`;
+      if (raceActive) {
+        currentRaceTime = (performance.now() - raceStartTime) / 1000;
+        lapTimeDisp.innerText = `TIME: ${currentRaceTime.toFixed(2)}s`;
+      }
+
+      // Audio with Angular Velocity & G-force Turbulence Feedback
+      const angVelMag = drone.angVel.length();
+      const gForce = 1.0 + (drone.throttle * drone.maxThrust / (drone.mass * drone.gravity));
+      audioSynth.update(drone.throttle, speedKmh, angVelMag, gForce);
+    }
+
+    function updateCamera() {
+      if (drone.camMode === 0) {
+        camera.fov = 105;
+        camera.updateProjectionMatrix();
+
+        const eyePos = drone.pos.clone().add(new THREE.Vector3(0, 0.08, 0.16).applyQuaternion(drone.quat));
+        camera.position.copy(eyePos);
+
+        const tiltQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), drone.fpvUptilt);
+        camera.quaternion.copy(drone.quat).multiply(tiltQuat);
+      } else {
+        camera.fov = 75;
+        camera.updateProjectionMatrix();
+
+        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(drone.quat);
+        forward.y = 0;
+        forward.normalize();
+
+        const chasePos = drone.pos.clone().sub(forward.multiplyScalar(3.2)).add(new THREE.Vector3(0, 1.2, 0));
+        camera.position.lerp(chasePos, 0.16);
+        camera.lookAt(drone.pos.clone().add(new THREE.Vector3(0, 0.3, 0)));
+      }
+    }
+
+    /* =========================================================================
+       13. MAIN ANIMATION LOOP
+       ========================================================================= */
+    let lastTime = performance.now();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const now = performance.now();
+      let frameDt = (now - lastTime) / 1000;
+      lastTime = now;
+      frameDt = Math.min(frameDt, 0.1);
+
+      let subSteps = Math.ceil(frameDt / fixedDt);
+      for (let s = 0; s < subSteps; s++) {
+        updatePhysics(frameDt / subSteps);
+      }
+
+      checkInteractions();
+
+      droneRoot.position.copy(drone.pos);
+      droneRoot.quaternion.copy(drone.quat);
+
+      // Animate Lake Water Waves
+      const timeSec = now * 0.002;
+      const wPos = waterGeo.attributes.position;
+      for (let i = 0; i < wPos.count; i++) {
+        const u = wPos.getX(i);
+        const v = wPos.getZ(i);
+        const wave = Math.sin(u * 0.12 + timeSec * 2.0) * Math.cos(v * 0.12 + timeSec * 1.5) * 0.35;
+        wPos.setY(i, wave);
+      }
+      waterGeo.computeVertexNormals();
+      wPos.needsUpdate = true;
+
+      // Rotate Turbines & Highway Cars
+      turbines.forEach((t) => (t.rotation.z += 0.02));
+      highwayCars.forEach((c) => {
+        c.mesh.position.z += c.speed * frameDt;
+        if (c.mesh.position.z > c.maxZ) c.mesh.position.z = c.minZ;
+        if (c.mesh.position.z < c.minZ) c.mesh.position.z = c.maxZ;
+      });
+
+      // Animate Orbs
+      energyOrbs.forEach((o, idx) => {
+        if (!o.collected) {
+          o.mesh.rotation.y += 0.03;
+          o.mesh.position.y = o.pos.y + Math.sin(now * 0.003 + idx) * 0.4;
+        }
+      });
+
+      // Update Particle Systems
+      updatePropWashDust(frameDt, drone.pos, drone.altitudeAGL, drone.throttle);
+      updateWindLines(frameDt, drone.vel.length() * 3.6, drone.pos, drone.vel, drone.boostTimer > 0);
+      updateCrashDebris(frameDt);
+
+      renderRadar();
+      updateCamera();
+      updateOSD();
+
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+  </script>
+</body>
+</html>
